@@ -161,24 +161,13 @@
     <p><code id="redirect-uri"></code></p>
 
     <section id="authorization-section">
-      <label for="client-id">Spotify Client ID</label>
-      <input
-        id="client-id"
-        type="text"
-        inputmode="text"
-        autocomplete="off"
-        autocapitalize="none"
-        spellcheck="false"
-        placeholder="Paste the Client ID from Spotify Developers"
-      >
-
       <button id="authorize-button" type="button">
         Authorize with Spotify
       </button>
 
       <p class="muted">
-        The Client ID identifies the application and is not a secret.
-        Never enter the Spotify Client Secret on this page.
+        Client ID status: <strong id="client-id-status"></strong>.
+        This public identifier is managed by the repository workflow.
       </p>
     </section>
 
@@ -211,9 +200,10 @@
 
     const AUTHORIZE_URL = "https://accounts.spotify.com/authorize";
     const TOKEN_URL = "https://accounts.spotify.com/api/token";
+    const SPOTIFY_CLIENT_ID = "__SPOTIFY_CLIENT_ID__"; // managed-by-update-spotify-callback
+    const SPOTIFY_REDIRECT_URI = "__SPOTIFY_REDIRECT_URI__"; // managed-by-update-spotify-callback
     const TOKEN_CLEAR_DELAY_MS = 2 * 60 * 1000;
     const SESSION_KEYS = {
-      clientId: "spotify_oauth_client_id",
       verifier: "spotify_oauth_code_verifier",
       state: "spotify_oauth_state"
     };
@@ -223,11 +213,13 @@
       "user-read-recently-played"
     ];
 
-    const redirectUri =
+    const redirectUri = SPOTIFY_REDIRECT_URI;
+    const currentPageUri =
       window.location.origin + window.location.pathname;
 
     const redirectElement = document.getElementById("redirect-uri");
-    const clientIdElement = document.getElementById("client-id");
+    const clientIdStatusElement =
+      document.getElementById("client-id-status");
     const authorizeButton = document.getElementById("authorize-button");
     const authorizationSection =
       document.getElementById("authorization-section");
@@ -239,6 +231,10 @@
 
     let clearTimer = null;
     redirectElement.textContent = redirectUri;
+    clientIdStatusElement.textContent =
+      SPOTIFY_CLIENT_ID === "__SPOTIFY_CLIENT_ID__"
+        ? "NOT CONFIGURED"
+        : "CONFIGURED";
 
     function setStatus(message, kind = "") {
       statusElement.textContent = message;
@@ -296,10 +292,27 @@
     }
 
     async function beginAuthorization() {
-      const clientId = clientIdElement.value.trim();
+      if (SPOTIFY_CLIENT_ID === "__SPOTIFY_CLIENT_ID__") {
+        setStatus(
+          "Client ID is not configured. Run update-spotify-callback.yml.",
+          "error"
+        );
+        return;
+      }
 
-      if (!clientId) {
-        setStatus("Spotify Client ID is required.", "error");
+      if (redirectUri === "__SPOTIFY_REDIRECT_URI__") {
+        setStatus(
+          "Redirect URI is not configured. Run update-spotify-callback.yml.",
+          "error"
+        );
+        return;
+      }
+
+      if (currentPageUri !== redirectUri) {
+        setStatus(
+          `Wrong callback page. Open exactly: ${redirectUri}`,
+          "error"
+        );
         return;
       }
 
@@ -310,12 +323,11 @@
       const challenge = await createCodeChallenge(verifier);
       const state = randomString(48);
 
-      sessionStorage.setItem(SESSION_KEYS.clientId, clientId);
       sessionStorage.setItem(SESSION_KEYS.verifier, verifier);
       sessionStorage.setItem(SESSION_KEYS.state, state);
 
       const query = new URLSearchParams({
-        client_id: clientId,
+        client_id: SPOTIFY_CLIENT_ID,
         response_type: "code",
         redirect_uri: redirectUri,
         scope: SCOPES.join(" "),
@@ -349,11 +361,10 @@
         throw new Error(`Spotify authorization failed: ${spotifyError}`);
       }
 
-      const clientId = sessionStorage.getItem(SESSION_KEYS.clientId);
       const verifier = sessionStorage.getItem(SESSION_KEYS.verifier);
       const expectedState = sessionStorage.getItem(SESSION_KEYS.state);
 
-      if (!clientId || !verifier || !expectedState) {
+      if (!verifier || !expectedState) {
         clearSessionData();
         throw new Error(
           "Authorization session expired. Start authorization again."
@@ -376,7 +387,7 @@
           "Content-Type": "application/x-www-form-urlencoded"
         },
         body: new URLSearchParams({
-          client_id: clientId,
+          client_id: SPOTIFY_CLIENT_ID,
           grant_type: "authorization_code",
           code,
           redirect_uri: redirectUri,
