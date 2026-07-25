@@ -7,10 +7,6 @@ on:
         description: "Spotify Client ID (public identifier)"
         required: true
         type: string
-      spotify_redirect_uri:
-        description: "Exact published GitHub Pages URL of spotify-callback.html"
-        required: true
-        type: string
 
 permissions:
   contents: write
@@ -35,7 +31,7 @@ jobs:
       - name: Update callback OAuth configuration
         env:
           SPOTIFY_PUBLIC_CLIENT_ID: ${{ inputs.spotify_client_id }}
-          SPOTIFY_PUBLIC_REDIRECT_URI: ${{ inputs.spotify_redirect_uri }}
+          SPOTIFY_PUBLIC_REDIRECT_URI: "https://felipealfonsog.github.io/spotify-callback.html"
         run: python3 .github/scripts/update_spotify_callback.py
 
       - name: Commit callback if changed
@@ -47,6 +43,7 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+
           git add spotify-callback.html
           git commit -m "chore: update Spotify callback OAuth configuration"
           git push
