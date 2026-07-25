@@ -8,15 +8,18 @@ from urllib.parse import urlsplit
 
 
 CALLBACK_FILE = Path("spotify-callback.html")
+
 CLIENT_ID = os.environ.get("SPOTIFY_PUBLIC_CLIENT_ID", "").strip()
 REDIRECT_URI = os.environ.get("SPOTIFY_PUBLIC_REDIRECT_URI", "").strip()
 
 CLIENT_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{16,128}$")
-ASSIGNMENT_PATTERN = re.compile(
+
+CLIENT_ID_ASSIGNMENT = re.compile(
     r'const SPOTIFY_CLIENT_ID = ".*?"; '
     r"// managed-by-update-spotify-callback"
 )
-REDIRECT_ASSIGNMENT_PATTERN = re.compile(
+
+REDIRECT_URI_ASSIGNMENT = re.compile(
     r'const SPOTIFY_REDIRECT_URI = ".*?"; '
     r"// managed-by-update-spotify-callback"
 )
@@ -24,67 +27,67 @@ REDIRECT_ASSIGNMENT_PATTERN = re.compile(
 
 def main():
     if not CLIENT_ID:
-        raise RuntimeError("The workflow input spotify_client_id is required.")
-    if not REDIRECT_URI:
-        raise RuntimeError(
-            "The workflow input spotify_redirect_uri is required."
-        )
+        raise RuntimeError("spotify_client_id is required.")
+
     if not CLIENT_ID_PATTERN.fullmatch(CLIENT_ID):
-        raise RuntimeError(
-            "Invalid Spotify Client ID format. "
-            "Expected 16-128 letters, numbers, underscores, or hyphens."
-        )
-    if not CALLBACK_FILE.is_file():
-        raise RuntimeError(f"File not found: {CALLBACK_FILE}")
+        raise RuntimeError("Invalid Spotify Client ID format.")
+
+    if not REDIRECT_URI:
+        raise RuntimeError("SPOTIFY_PUBLIC_REDIRECT_URI is required.")
 
     parsed = urlsplit(REDIRECT_URI)
+
     if (
         parsed.scheme != "https"
         or not parsed.netloc
         or parsed.query
         or parsed.fragment
     ):
-        raise RuntimeError(
-            "spotify_redirect_uri must be the exact HTTPS GitHub Pages URL "
-            "without query parameters or fragments."
-        )
+        raise RuntimeError("Invalid Spotify Redirect URI.")
+
+    if not CALLBACK_FILE.is_file():
+        raise RuntimeError(f"File not found: {CALLBACK_FILE}")
 
     html = CALLBACK_FILE.read_text(encoding="utf-8")
-    client_replacement = (
+
+    client_assignment = (
         f"const SPOTIFY_CLIENT_ID = {json.dumps(CLIENT_ID)}; "
         "// managed-by-update-spotify-callback"
     )
-    updated, replacements = ASSIGNMENT_PATTERN.subn(
-        client_replacement,
+
+    updated, client_count = CLIENT_ID_ASSIGNMENT.subn(
+        client_assignment,
         html,
         count=1,
     )
-    if replacements != 1:
+
+    if client_count != 1:
         raise RuntimeError(
-            "Managed SPOTIFY_CLIENT_ID assignment was not found exactly once."
+            "SPOTIFY_CLIENT_ID assignment was not found in spotify-callback.html."
         )
 
-    redirect_replacement = (
+    redirect_assignment = (
         f"const SPOTIFY_REDIRECT_URI = {json.dumps(REDIRECT_URI)}; "
         "// managed-by-update-spotify-callback"
     )
-    updated, redirect_replacements = REDIRECT_ASSIGNMENT_PATTERN.subn(
-        redirect_replacement,
+
+    updated, redirect_count = REDIRECT_URI_ASSIGNMENT.subn(
+        redirect_assignment,
         updated,
         count=1,
     )
-    if redirect_replacements != 1:
+
+    if redirect_count != 1:
         raise RuntimeError(
-            "Managed SPOTIFY_REDIRECT_URI assignment was not found exactly "
-            "once."
+            "SPOTIFY_REDIRECT_URI assignment was not found in spotify-callback.html."
         )
 
     if updated == html:
-        print("Spotify callback Client ID and Redirect URI already configured.")
+        print("Spotify callback configuration already up to date.")
         return
 
     CALLBACK_FILE.write_text(updated, encoding="utf-8")
-    print("Spotify callback Client ID and Redirect URI updated.")
+    print("Spotify Client ID and Redirect URI updated successfully.")
 
 
 if __name__ == "__main__":
